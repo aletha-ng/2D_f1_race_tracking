@@ -4,6 +4,7 @@ import plotly as pl
 import requests as requests
 import scipy as scp
 import plotly.express as px 
+import plotly.graph_objects as go
 
 from datetime import datetime, timedelta
 
@@ -133,3 +134,80 @@ fig_anim.update_yaxes(scaleanchor="x", scaleratio=1)
 fig_anim.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 50  # 50 ms/frame = 20 FPS
 fig_anim.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = 0
 fig_anim.show()
+
+#plotting static track 
+track_trace = go.Scatter(
+    x=df["x_rot_ccw"],
+    y=df["y_rot_ccw"],
+    mode="lines",
+    line=dict(color="black", width=2),
+    name="Track",
+)
+
+car_trace = go.Scatter(
+    x=[anim_df["x_rot_ccw"].iloc[0]],
+    y=[anim_df["y_rot_ccw"].iloc[0]],
+    mode="markers",
+    marker=dict(size=14, color="red"),
+    name=f"Driver {DRIVER_NUM}",
+)
+
+#frames 
+frames = [
+    go.Frame(
+        data=[
+            go.Scatter(
+                x=[row["x_rot_ccw"]],
+                y=[row["y_rot_ccw"]],
+            )
+        ],
+        traces=[1],  # tells Plotly this frame updates trace index 1 (the dot)
+        name=str(i),
+    )
+    for i, row in anim_df.iterrows()
+]
+
+fig_anim = go.Figure(
+    data=[track_trace, car_trace],
+    frames=frames,
+)
+ 
+fig_anim.update_layout(
+    title=f"Driver {DRIVER_NUM} - live position replay (first 5 minutes)",
+    xaxis=dict(range=[df["x_rot_ccw"].min() - 500, df["x_rot_ccw"].max() + 500]),
+    yaxis=dict(range=[df["y_rot_ccw"].min() - 500, df["y_rot_ccw"].max() + 500]),
+    updatemenus=[
+        dict(
+            type="buttons",
+            buttons=[
+                dict(
+                    label="Play",
+                    method="animate",
+                    args=[
+                        None,
+                        {
+                            "frame": {"duration": 50, "redraw": True},
+                            "transition": {"duration": 0},
+                            "fromcurrent": True,
+                        },
+                    ],
+                ),
+                dict(
+                    label="Pause",
+                    method="animate",
+                    args=[
+                        [None],
+                        {
+                            "frame": {"duration": 0, "redraw": False},
+                            "mode": "immediate",
+                        },
+                    ],
+                ),
+            ],
+        )
+    ],
+)
+ 
+fig_anim.update_yaxes(scaleanchor="x", scaleratio=1)
+fig_anim.show()
+ 
