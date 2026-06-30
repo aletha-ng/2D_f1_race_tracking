@@ -5,11 +5,13 @@ import requests as requests
 import scipy as scp
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.colors as pc
 
 from datetime import datetime, timedelta
 from urllib.request import urlopen
 from scipy.interpolate import interp1d
 import json
+import time
 
 #Session: Belgium 2023 Race 
 session_response = requests.get(
@@ -74,7 +76,7 @@ slice_end_str = lap_end_dt.strftime("%Y-%m-%dT%H:%M:%S.%f")
 print(f"Querying location data from {slice_start_str} to {slice_end_str}")
 
 #Take data from two driver for now
-DRIVER_NUM = drivers[0]["driver_number"], drivers[15]["driver_number"], drivers[1]["driver_number"]
+DRIVER_NUM = tuple(d["driver_number"] for d in drivers)
 
 location_data_per_driver = {}
 
@@ -89,8 +91,13 @@ for driver_num in DRIVER_NUM:
         },
     )
     response.raise_for_status()
-    location_data_per_driver[driver_num] = pd.DataFrame(response.json())
+    data = response.json()
+    if not data:
+        print(f"Driver {driver_num}: no data, skipping")
+        continue
+    location_data_per_driver[driver_num] = pd.DataFrame(data)
     print(f"Driver {driver_num}: {len(location_data_per_driver[driver_num])} rows")
+    time.sleep(0.4)
 
 #Find min, max for x,y coords
 all_drivers_df = pd.concat(location_data_per_driver.values(), ignore_index=True)
@@ -165,7 +172,12 @@ track_trace = go.Scatter(
     name="Track",
 )
  
-driver_colors = {1: "red", 44: "cyan", 2:"yellow"}
+color_list = pc.qualitative.Light24  # 24 distinct colors, enough for 20 drivers
+driver_colors = {
+    driver_num: color_list[i % len(color_list)]
+    for i, driver_num in enumerate(DRIVER_NUM)
+}
+
 car_trace = [
     go.Scatter(
         x=[interpolated[driver_num]["x"][0]],
@@ -205,6 +217,9 @@ fig_anim.update_layout(
     paper_bgcolor="black",
     plot_bgcolor="black",
     font=dict(color="red"),
+    width=1260,
+    height=600,
+    margin=dict(l=20, r=20, t=60, b=20),
     xaxis=dict(
         range=[min_x - 500, max_x + 500],
         showgrid=False,
