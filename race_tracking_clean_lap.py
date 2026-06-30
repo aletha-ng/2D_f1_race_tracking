@@ -72,33 +72,47 @@ slice_end_str = lap_end_dt.strftime("%Y-%m-%dT%H:%M:%S.%f")
 
 print(f"Querying location data from {slice_start_str} to {slice_end_str}")
 
-#Take data form one driver for now
-DRIVER_NUM = drivers[0]["driver_number"]
- 
-location_response = requests.get(
-    "https://api.openf1.org/v1/location",
-    params={
-        "session_key": session_key,
-        "driver_number": DRIVER_NUM,
-        "date>": slice_start_str,
-        "date<": slice_end_str,
-    },
-)
-location_response.raise_for_status()
-location_data = location_response.json()
+#Take data from two driver for now
+DRIVER_NUM = drivers[0]["driver_number"], drivers[15]["driver_number"]
+
+location_data_per_driver = {}
+
+for driver_num in DRIVER_NUM:
+    response = requests.get(
+        "https://api.openf1.org/v1/location",
+        params={
+            "session_key": session_key,
+            "driver_number": driver_num,
+            "date>": slice_start_str,
+            "date<": slice_end_str,
+        },
+    )
+    response.raise_for_status()
+    location_data_per_driver[driver_num] = pd.DataFrame(response.json())
+    print(f"Driver {driver_num}: {len(location_data_per_driver[driver_num])} rows")
 
 #Find min, max for x,y coords
-df = pd.DataFrame(location_data)
+all_drivers_df = pd.concat(location_data_per_driver.values(), ignore_index=True)
 
-min_x, max_x = df["x"].min(), df["x"].max()
-min_y, max_y = df["y"].min(), df["y"].max()
+# Apply the rotation to the combined df
+all_drivers_df["x_rot_ccw"] = -all_drivers_df["y"]
+all_drivers_df["y_rot_ccw"] = all_drivers_df["x"]
  
-print(min_x, max_x, min_y, max_y)
+#min max from combined dataset
+min_x = all_drivers_df["x_rot_ccw"].min()
+max_x = all_drivers_df["x_rot_ccw"].max()
+min_y = all_drivers_df["y_rot_ccw"].min()
+max_y = all_drivers_df["y_rot_ccw"].max()
+
+print(f"x range: {min_x} to {max_x}")
+print(f"y range: {min_y} to {max_y}")
 
 # coords need to rotate 90 ccw
-df["x_rot_ccw"] = -df["y"]
-df["y_rot_ccw"] = df["x"]
- 
+for driver_num, df in location_data_per_driver.items():
+    df["x_rot_ccw"] = -df["y"]
+    df["y_rot_ccw"] = df["x"]
+
+#interpolation <---- start from here to modify two drivers
 fig_ccw = px.line(
     df,
     x="x_rot_ccw",
