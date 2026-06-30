@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 
 from datetime import datetime, timedelta
 from urllib.request import urlopen
+from scipy.interpolate import interp1d
 import json
 
 #Session: Belgium 2023 Race 
@@ -73,7 +74,7 @@ slice_end_str = lap_end_dt.strftime("%Y-%m-%dT%H:%M:%S.%f")
 print(f"Querying location data from {slice_start_str} to {slice_end_str}")
 
 #Take data from two driver for now
-DRIVER_NUM = drivers[0]["driver_number"], drivers[15]["driver_number"]
+DRIVER_NUM = drivers[0]["driver_number"], drivers[15]["driver_number"], drivers[1]["driver_number"]
 
 location_data_per_driver = {}
 
@@ -113,6 +114,35 @@ for driver_num, df in location_data_per_driver.items():
     df["y_rot_ccw"] = df["x"]
 
 #interpolation <---- start from here to modify two drivers
+
+#convert drivers date to seconds 
+lap_start_ts = pd.Timestamp(slice_start_str, tz="UTC")
+
+for driver_num, df in location_data_per_driver.items():
+    df["date"] = pd.to_datetime(df["date"])
+    df["t_sec"] = (df["date"] - lap_start_ts).dt.total_seconds()
+
+#adjusting for cars to share same timeline
+t_start = max(df["t_sec"].min() for df in location_data_per_driver.values())
+t_end = min(df["t_sec"].max() for df in location_data_per_driver.values())
+t_common = np.arange(t_start, t_end, 0.1)
+
+print(f"Shared timeline: {len(t_common)} frames at 0.1s intervals")
+
+interpolated={}
+
+for driver_num, df in location_data_per_driver.items():
+    interp_x = interp1d(df["t_sec"], df["x_rot_ccw"], kind="linear")
+    interp_y = interp1d(df["t_sec"], df["y_rot_ccw"], kind="linear")
+    
+    interpolated[driver_num] = {
+        "x": interp_x(t_common),
+        "y": interp_y(t_common),
+    }
+    
+    print(f"Driver {driver_num}: interpolated to {len(t_common)} frames")
+
+#plotting figures (static)
 fig_ccw = px.line(
     df,
     x="x_rot_ccw",
@@ -120,54 +150,73 @@ fig_ccw = px.line(
     title="Rotated 90 degrees counterclockwise",
 )
 fig_ccw.update_yaxes(scaleanchor="x", scaleratio=1)
-fig_ccw.show()
 
-#animation
+#animation, for multi-driver
 df["date"] = pd.to_datetime(df["date"])
 
 anim_df = df.copy().reset_index(drop=True)
 print(f"Rows in animation window: {len(anim_df)}")
 
 track_trace = go.Scatter(
-    x=df["x_rot_ccw"],
-    y=df["y_rot_ccw"],
+    x=all_drivers_df["x_rot_ccw"],
+    y=all_drivers_df["y_rot_ccw"],
     mode="lines",
     line=dict(color="lightgray", width=2),
     name="Track",
 )
  
-car_trace = go.Scatter(
-    x=[anim_df["x_rot_ccw"].iloc[0]],
-    y=[anim_df["y_rot_ccw"].iloc[0]],
-    mode="markers",
-    marker=dict(size=14, color="red"),
-    name=f"Driver {DRIVER_NUM}",
-)
+driver_colors = {1: "red", 44: "cyan", 2:"yellow"}
+car_trace = [
+    go.Scatter(
+        x=[interpolated[driver_num]["x"][0]],
+        y=[interpolated[driver_num]["y"][0]],
+        mode="markers",
+        marker=dict(size=14, color=driver_colors.get(driver_num, "white")),
+        name=f"Driver {driver_num}",
+    )
+    for driver_num in DRIVER_NUM
+]
 
 #updating frames
+car_trace_indices = list(range(1, len(DRIVER_NUM) + 1))
+
 frames = [
     go.Frame(
         data=[
             go.Scatter(
-                x=[row["x_rot_ccw"]],
-                y=[row["y_rot_ccw"]],
+                x=[interpolated[driver_num]["x"][i]],
+                y=[interpolated[driver_num]["y"][i]],
             )
+            for driver_num in DRIVER_NUM
         ],
-        traces=[1],  # tells Plotly this frame updates trace index 1 (the dot)
+        traces=car_trace_indices,  # tells Plotly this frame updates trace index 1 
         name=str(i),
     )
-    for i, row in anim_df.iterrows()
+    for i in range(len(t_common))
 ]
 
 fig_anim = go.Figure(
-    data=[track_trace, car_trace],
+    data=[track_trace] + car_trace,
     frames=frames,
 )
 
 fig_anim.update_layout(
-    title=f"Driver {DRIVER_NUM} - live position replay (lap {chosen_lap['lap_number']})",
-    xaxis=dict(range=[df["x_rot_ccw"].min() - 500, df["x_rot_ccw"].max() + 500]),
-    yaxis=dict(range=[df["y_rot_ccw"].min() - 500, df["y_rot_ccw"].max() + 500]),
+    title=f"Race replay - lap {chosen_lap['lap_number']}",
+    paper_bgcolor="black",
+    plot_bgcolor="black",
+    font=dict(color="red"),
+    xaxis=dict(
+        range=[min_x - 500, max_x + 500],
+        showgrid=False,
+        zeroline=False,
+        showticklabels=False,
+    ),
+    yaxis=dict(
+         range=[min_y - 500, max_y + 500],
+        showgrid=False,
+        zeroline=False,
+        showticklabels=False,
+    ),
     updatemenus=[
         dict(
             type="buttons",
