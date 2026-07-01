@@ -99,18 +99,27 @@ for driver_num in DRIVER_NUM:
     print(f"Driver {driver_num}: {len(location_data_per_driver[driver_num])} rows")
     time.sleep(0.4)
 
+for driver_num, df in location_data_per_driver.items():
+    df["x_rot_ccw"] = -df["y"]
+    df["y_rot_ccw"] = df["x"]
+
 #Find min, max for x,y coords
 all_drivers_df = pd.concat(location_data_per_driver.values(), ignore_index=True)
 
-# Apply the rotation to the combined df
-all_drivers_df["x_rot_ccw"] = -all_drivers_df["y"]
-all_drivers_df["y_rot_ccw"] = all_drivers_df["x"]
+#filtering out GPS outliers 
+x_low, x_high = all_drivers_df["x_rot_ccw"].quantile([0.02, 0.98])
+y_low, y_high = all_drivers_df["y_rot_ccw"].quantile([0.02, 0.98])
+
+track_df = location_data_per_driver[1][  # driver 1 = Verstappen
+    (location_data_per_driver[1]["x_rot_ccw"].between(x_low, x_high)) &
+    (location_data_per_driver[1]["y_rot_ccw"].between(y_low, y_high))
+].sort_values("date").reset_index(drop=True)
  
 #min max from combined dataset
-min_x = all_drivers_df["x_rot_ccw"].min()
-max_x = all_drivers_df["x_rot_ccw"].max()
-min_y = all_drivers_df["y_rot_ccw"].min()
-max_y = all_drivers_df["y_rot_ccw"].max()
+min_x = track_df["x_rot_ccw"].min()
+max_x = track_df["x_rot_ccw"].max()
+min_y = track_df["y_rot_ccw"].min()
+max_y = track_df["y_rot_ccw"].max()
 
 print(f"x range: {min_x} to {max_x}")
 print(f"y range: {min_y} to {max_y}")
@@ -119,9 +128,8 @@ print(f"y range: {min_y} to {max_y}")
 for driver_num, df in location_data_per_driver.items():
     df["x_rot_ccw"] = -df["y"]
     df["y_rot_ccw"] = df["x"]
-
-#interpolation <---- start from here to modify two drivers
-
+    
+#interpolation 
 #convert drivers date to seconds 
 lap_start_ts = pd.Timestamp(slice_start_str, tz="UTC")
 
@@ -165,8 +173,8 @@ anim_df = df.copy().reset_index(drop=True)
 print(f"Rows in animation window: {len(anim_df)}")
 
 track_trace = go.Scatter(
-    x=all_drivers_df["x_rot_ccw"],
-    y=all_drivers_df["y_rot_ccw"],
+    x=track_df["x_rot_ccw"],
+    y=track_df["y_rot_ccw"],
     mode="lines",
     line=dict(color="lightgray", width=2),
     name="Track",
