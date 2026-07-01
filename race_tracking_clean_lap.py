@@ -12,6 +12,10 @@ from urllib.request import urlopen
 from scipy.interpolate import interp1d
 import json
 import time
+import os
+
+CACHE_DIR = "cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 #Session: Belgium 2023 Race 
 session_response = requests.get(
@@ -80,24 +84,55 @@ DRIVER_NUM = tuple(d["driver_number"] for d in drivers)
 
 location_data_per_driver = {}
 
+#CACHE FOR DRIVER LAPS COORDS 
 for driver_num in DRIVER_NUM:
-    response = requests.get(
-        "https://api.openf1.org/v1/location",
-        params={
-            "session_key": session_key,
-            "driver_number": driver_num,
-            "date>": slice_start_str,
-            "date<": slice_end_str,
-        },
-    )
-    response.raise_for_status()
-    data = response.json()
-    if not data:
-        print(f"Driver {driver_num}: no data, skipping")
-        continue
+    cache_file = f"{CACHE_DIR}/session_{session_key}_driver_{driver_num}_lap{chosen_lap['lap_number']}.json"
+    
+    if os.path.exists(cache_file):
+        print(f"Loading cached data for driver {driver_num} from {cache_file}")
+        with open(cache_file, "r") as f:
+            data = json.load(f)
+        print(f"Driver {driver_num}: {len(data)} rows loaded from cache")
+    else:
+        response = requests.get(
+            "https://api.openf1.org/v1/location",
+            params={
+                "session_key": session_key,
+                "driver_number": driver_num,
+                "date>": slice_start_str,
+                "date<": slice_end_str,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not data:
+            print(f"Driver {driver_num}: no data, skipping")
+            continue
+        with open(cache_file, "w") as f:
+            json.dump(data, f)
+        print(f"Driver {driver_num}: {len(data)} rows fetched and cached to {cache_file}")
+        time.sleep(0.4)
+    
     location_data_per_driver[driver_num] = pd.DataFrame(data)
-    print(f"Driver {driver_num}: {len(location_data_per_driver[driver_num])} rows")
-    time.sleep(0.4)
+    
+# for driver_num in DRIVER_NUM:
+#     response = requests.get(
+#         "https://api.openf1.org/v1/location",
+#         params={
+#             "session_key": session_key,
+#             "driver_number": driver_num,
+#             "date>": slice_start_str,
+#             "date<": slice_end_str,
+#         },
+#     )
+#     response.raise_for_status()
+#     data = response.json()
+#     if not data:
+#         print(f"Driver {driver_num}: no data, skipping")
+#         continue
+#     location_data_per_driver[driver_num] = pd.DataFrame(data)
+#     print(f"Driver {driver_num}: {len(location_data_per_driver[driver_num])} rows")
+#     time.sleep(0.4)
 
 for driver_num, df in location_data_per_driver.items():
     df["x_rot_ccw"] = -df["y"]
@@ -140,7 +175,7 @@ for driver_num, df in location_data_per_driver.items():
 #adjusting for cars to share same timeline
 t_start = max(df["t_sec"].min() for df in location_data_per_driver.values())
 t_end = min(df["t_sec"].max() for df in location_data_per_driver.values())
-t_common = np.arange(t_start, t_end, 0.1)
+t_common = np.arange(t_start, t_end, 0.2)
 
 print(f"Shared timeline: {len(t_common)} frames at 0.1s intervals")
 
