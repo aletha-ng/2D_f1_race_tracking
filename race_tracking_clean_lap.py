@@ -14,6 +14,8 @@ import json
 import time
 import os
 
+from f1_constants import TEAM_COLORS
+
 CACHE_DIR = "cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -215,10 +217,17 @@ track_trace = go.Scatter(
     name="Track",
 )
  
-color_list = pc.qualitative.Light24  # 24 distinct colors, enough for 20 drivers
+#driver team colors
 driver_colors = {
-    driver_num: color_list[i % len(color_list)]
-    for i, driver_num in enumerate(DRIVER_NUM)
+    d["driver_number"]: TEAM_COLORS.get(d["team_name"], "white")
+    for d in drivers
+    if d["driver_number"] in location_data_per_driver
+}
+
+#setting driver name on labels
+driver_names = {
+    d["driver_number"]: d.get("name_acronym", str(d["driver_number"]))
+    for d in drivers
 }
 
 car_trace = [
@@ -227,9 +236,9 @@ car_trace = [
         y=[interpolated[driver_num]["y"][0]],
         mode="markers",
         marker=dict(size=14, color=driver_colors.get(driver_num, "white")),
-        name=f"Driver {driver_num}",
+        name=driver_names.get(driver_num, str(driver_num)),
     )
-    for driver_num in DRIVER_NUM
+    for driver_num in location_data_per_driver
 ]
 
 #updating frames
@@ -308,4 +317,4 @@ fig_anim.update_layout(
 )
  
 fig_anim.update_yaxes(scaleanchor="x", scaleratio=1)
-fig_anim.show()
+fig_anim.show(config={"displayModeBar": False})
