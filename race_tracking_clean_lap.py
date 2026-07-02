@@ -52,6 +52,12 @@ drivers = driver_response.json()
 for d in drivers:
     print(f"  {d['driver_number']:>3} - {d['full_name']} ({d['team_name']})")
 
+#Getting information abt race and track 
+session = session_response.json()[0]
+race_date = datetime.fromisoformat(session["date_start"]).strftime("%d %b %Y")
+country = session["country_name"]
+circuit = session["circuit_short_name"]
+
 #Get lap endpoints
 laps_response = requests.get(
     "https://api.openf1.org/v1/laps",
@@ -253,7 +259,7 @@ frames = [
             )
             for driver_num in DRIVER_NUM
         ],
-        traces=car_trace_indices,  # tells Plotly this frame updates trace index 1 
+        traces=car_trace_indices, 
         name=str(i),
     )
     for i in range(len(t_common))
@@ -265,13 +271,13 @@ fig_anim = go.Figure(
 )
 
 fig_anim.update_layout(
-    title=f"Race replay - lap {chosen_lap['lap_number']}",
+    title=f"{country} Grand Prix {race_date} - {circuit} | Lap {chosen_lap['lap_number']}",
     paper_bgcolor="black",
     plot_bgcolor="black",
     font=dict(color="red"),
     width=1260,
     height=600,
-    margin=dict(l=20, r=20, t=60, b=20),
+    margin=dict(l=0, r=0, t=50, b=0),
     xaxis=dict(
         range=[min_x - 500, max_x + 500],
         showgrid=False,
